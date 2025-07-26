@@ -3,16 +3,38 @@ import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import IconButton from './components/IconButton';
 import ImportScene from './components/ImportScene';
+
+import CameraPage from './pages/CameraPage';
+import TraitementPage from './pages/TraitementPage';
+
+import ModelingPage from './pages/modeling';
+import SculptingPage from './pages/sculpting';
+import AnimationPage from './pages/animation';
+import RenderingPage from './pages/rendering';
+import TexturingPage from './pages/texturing';
+import RiggingPage from './pages/rigging';
+import SimulationPage from './pages/simulation';
+import EditingPage from './pages/editing';
+import ShadingPage from './pages/shading';
+import CompositingPage from './pages/compositing';
+import AlignPhotosPage from './pages/align_photos';
+import BuildMeshPage from './pages/build_mesh';
+import BuildTexturePage from './pages/build_texture';
+import ExportModelPage from './pages/export_model';
+import DenseCloudPage from './pages/dense_cloud';
+import ScaleModelPage from './pages/scale_model';
+import ImportCamerasPage from './pages/import_cameras';
+import UndistortPage from './pages/undistort';
+import ProcessPhotosPage from './pages/process_photos';
+import ImportPage from './pages/import';
+
 import {
   FaCube, FaPaintBrush, FaFilm, FaLightbulb, FaImage, FaWrench,
   FaPlay, FaCut, FaCubes, FaTools, FaCamera, FaChartArea, FaMap,
   FaFileExport, FaCloud, FaRuler, FaSync, FaCog, FaEye, FaFileImport
 } from 'react-icons/fa';
-import './App.css';
 
-function Placeholder({ name }) {
-  return <h2>Section {name}</h2>;
-}
+import './App.css';
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -44,6 +66,31 @@ function App() {
     { to: '/import', text: 'Importer', icon: FaFileImport },
   ];
 
+  const routeComponents = {
+    '/modeling': <ModelingPage />,
+    '/sculpting': <SculptingPage />,
+    '/animation': <AnimationPage />,
+    '/rendering': <RenderingPage />,
+    '/texturing': <TexturingPage />,
+    '/rigging': <RiggingPage />,
+    '/simulation': <SimulationPage />,
+    '/editing': <EditingPage />,
+    '/shading': <ShadingPage />,
+    '/compositing': <CompositingPage />,
+    '/align-photos': <AlignPhotosPage />,
+    '/build-mesh': <BuildMeshPage />,
+    '/build-texture': <BuildTexturePage />,
+    '/export-model': <ExportModelPage />,
+    '/dense-cloud': <DenseCloudPage />,
+    '/scale-model': <ScaleModelPage />,
+    '/import-cameras': <ImportCamerasPage />,
+    '/undistort': <UndistortPage />,
+    '/process-photos': <ProcessPhotosPage />,
+    '/import': <ImportPage />,
+    '/camera': <CameraPage />,
+    '/traitement': <TraitementPage />,
+  };
+
   return (
     <Router>
       <div className="app-container">
@@ -59,16 +106,15 @@ function App() {
         </div>
         <div className={`content ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
           <Routes>
-            <Route path="/camera" element={<Placeholder name="Caméra" />} />
-            <Route path="/traitement" element={<Placeholder name="Traitement" />} />
             {buttons.map((btn) => (
               <Route
                 key={btn.to}
                 path={btn.to}
-                element={<Placeholder name={btn.text} />}
+                element={routeComponents[btn.to]}
               />
             ))}
-            <Route path="/import" element={<ImportScene />} />
+            <Route path="/camera" element={<CameraPage />} />
+            <Route path="/traitement" element={<TraitementPage />} />
             <Route path="/" element={<h2>Bienvenue ! Sélectionnez une fonction.</h2>} />
           </Routes>
         </div>

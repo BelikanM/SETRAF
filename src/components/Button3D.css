@@ -1,0 +1,58 @@
+/* Wrapper pour le canvas et l'icône */
+.button-wrapper {
+  position: relative;
+  width: 130px;
+  height: 130px;
+}
+
+/* Overlay pour l'icône 2D */
+.icon-overlay {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none; /* Permet les clics sur le canvas */
+}
+
+.icon {
+  font-size: 2.2rem;
+  color: #1e3a8a;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+}
+
+/* Responsive design */
+@media (max-width: 1000px) {
+  .button-wrapper {
+    width: 110px;
+    height: 110px;
+  }
+
+  .icon {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .button-wrapper {
+    width: 90px;
+    height: 90px;
+  }
+
+  .icon {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .button-wrapper {
+    width: 70px;
+    height: 70px;
+  }
+
+  .icon {
+    font-size: 1.5rem;
+  }
+}

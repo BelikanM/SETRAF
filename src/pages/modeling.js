@@ -11,7 +11,7 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader";
 import * as THREE from "three";
-import "./App.css";
+import "./App.css"; // Assurez-vous que ce fichier CSS est présent
 
 // Textures prédéfinies
 const presetTextures = [
@@ -196,7 +196,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
 
   const getIntersects = () => {
     raycaster.current.setFromCamera(mouse.current, camera);
-    raycaster.current.near = 0.1; // Amélioration de la sensibilité du raycaster
+    raycaster.current.near = 0.1;
     raycaster.current.far = 1000;
     return raycaster.current.intersectObject(object, true);
   };
@@ -221,7 +221,6 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
       setCurrentPoints((prev) => {
         if (prev.length === 0) return [point];
         const lastPoint = prev[prev.length - 1];
-        // Distance réduite pour une meilleure sensibilité
         if (point.distanceTo(lastPoint) > 0.005) {
           if (drawType === "straight" && prev.length === 1) {
             return [prev[0], point];
@@ -355,7 +354,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   useEffect(() => {
     if (object && controlsRef.current && mode !== "draw") {
       const controls = controlsRef.current;
-      controls.enabled = true; // Activer les contrôles explicitement
+      controls.enabled = true;
       controls.addEventListener("change", () => {
         const newState = {
           position: object.position.clone(),
@@ -366,7 +365,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
         setRedoStack([]);
       });
       return () => {
-        controls.enabled = false; // Désactiver les contrôles lors du démontage
+        controls.enabled = false;
       };
     }
   }, [object, mode]);
@@ -851,7 +850,7 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
   };
 
   const handleDraw = () => {
-    // Fonction conservée pour compatibilité, mais les logs sont supprimés
+    // Fonction vide pour compatibilité
   };
 
   return (

@@ -11,8 +11,7 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader";
 import * as THREE from "three";
-
-import DrawingTools from "./DrawingTools";
+import "./App.css";
 
 // Textures prédéfinies
 const presetTextures = [
@@ -65,6 +64,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState([]);
   const [lines, setLines] = useState([]);
+  const modelGroupRef = useRef(new THREE.Group());
 
   useEffect(() => {
     const ext = file.name.split(".").pop().toLowerCase();
@@ -106,6 +106,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
           }
         });
         setObject(result);
+        modelGroupRef.current.add(result);
       } else if (ext === "glb" || ext === "gltf") {
         const loader = new GLTFLoader();
         loader.parse(reader.result, "", (gltf) => {
@@ -126,6 +127,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
             }
           });
           setObject(gltf.scene);
+          modelGroupRef.current.add(gltf.scene);
         });
       } else if (ext === "ply") {
         const loader = new PLYLoader();
@@ -134,6 +136,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
         const pointsMaterial = new THREE.PointsMaterial({ size: 0.01, color });
         const points = new THREE.Points(geometry, pointsMaterial);
         setObject(points);
+        modelGroupRef.current.add(points);
       } else if (ext === "las") {
         const buffer = reader.result;
         const view = new DataView(buffer);
@@ -172,6 +175,7 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
         const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
         const points = new THREE.Points(geometry, material);
         setObject(points);
+        modelGroupRef.current.add(points);
       } else {
         alert("Format non supporté : " + ext);
       }
@@ -192,6 +196,8 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
 
   const getIntersects = () => {
     raycaster.current.setFromCamera(mouse.current, camera);
+    raycaster.current.near = 0.1; // Amélioration de la sensibilité du raycaster
+    raycaster.current.far = 1000;
     return raycaster.current.intersectObject(object, true);
   };
 
@@ -215,8 +221,8 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
       setCurrentPoints((prev) => {
         if (prev.length === 0) return [point];
         const lastPoint = prev[prev.length - 1];
-        // Ajouter un point seulement si la distance est supérieure à 0.01 (précision)
-        if (point.distanceTo(lastPoint) > 0.01) {
+        // Distance réduite pour une meilleure sensibilité
+        if (point.distanceTo(lastPoint) > 0.005) {
           if (drawType === "straight" && prev.length === 1) {
             return [prev[0], point];
           } else if (drawType === "free") {
@@ -238,8 +244,13 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
       } else if (drawType === "square") {
         finalPoints = createSquarePoints(currentPoints[0], currentPoints[1]);
       }
+      const localPoints = finalPoints.map((p) => {
+        const localP = p.clone();
+        modelGroupRef.current.worldToLocal(localP);
+        return localP;
+      });
       const length = calculateLength(finalPoints);
-      setLines((prev) => [...prev, { points: finalPoints, length, type: drawType }]);
+      setLines((prev) => [...prev, { points: localPoints, length, type: drawType }]);
       onDraw({ points: finalPoints, length, type: drawType });
     }
     setIsDrawing(false);
@@ -282,16 +293,26 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
     return length;
   };
 
+  const getPreviewPoints = (type, points) => {
+    if (type === "circle" && points.length === 2) {
+      return createCirclePoints(points[0], points[1]);
+    } else if (type === "square" && points.length === 2) {
+      return createSquarePoints(points[0], points[1]);
+    } else {
+      return points;
+    }
+  };
+
   function handleClick(event) {
     if (drawMode) return;
     event.stopPropagation();
     const point = event.point;
     onClickPin(file.name, point);
-    setSelectedObject(object);
+    setSelectedObject(modelGroupRef.current);
   }
 
   return (
-    <>
+    <group ref={modelGroupRef}>
       {object && (
         <primitive
           object={object}
@@ -306,10 +327,16 @@ function LoadModel({ file, material, textureURL, onClickPin, color, interiorColo
       {lines.map((line, index) => (
         <DrawnLines key={index} points={line.points} color={lineColor} width={lineWidth} length={line.length} type={line.type} />
       ))}
-      {currentPoints.length > 0 && (
-        <DrawnLines points={currentPoints} color={lineColor} width={lineWidth} length={calculateLength(currentPoints)} type={drawType} />
+      {isDrawing && currentPoints.length > 0 && (
+        <DrawnLines
+          points={getPreviewPoints(drawType, currentPoints)}
+          color={lineColor}
+          width={lineWidth}
+          length={calculateLength(getPreviewPoints(drawType, currentPoints))}
+          type={drawType}
+        />
       )}
-    </>
+    </group>
   );
 }
 
@@ -326,8 +353,9 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   const [isPanelVisible, setIsPanelVisible] = useState(true);
 
   useEffect(() => {
-    if (object && controlsRef.current) {
+    if (object && controlsRef.current && mode !== "draw") {
       const controls = controlsRef.current;
+      controls.enabled = true; // Activer les contrôles explicitement
       controls.addEventListener("change", () => {
         const newState = {
           position: object.position.clone(),
@@ -337,8 +365,11 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
         setHistory((prev) => [...prev, newState].slice(-50));
         setRedoStack([]);
       });
+      return () => {
+        controls.enabled = false; // Désactiver les contrôles lors du démontage
+      };
     }
-  }, [object]);
+  }, [object, mode]);
 
   const undo = () => {
     if (history.length <= 1) return;
@@ -365,7 +396,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   };
 
   const handleInputChange = (type, axis, value) => {
-    if (!object) return;
+    if (!object || mode === "draw") return;
     const numValue = parseFloat(value) || 0;
     if (type === "position") object.position[axis] = numValue;
     if (type === "rotation") object.rotation[axis] = THREE.MathUtils.degToRad(numValue);
@@ -409,35 +440,35 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   };
 
   const rotateLeft = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.rotateY(THREE.MathUtils.degToRad(15));
       orbitControlsRef.current.update();
     }
   };
 
   const rotateRight = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.rotateY(THREE.MathUtils.degToRad(-15));
       orbitControlsRef.current.update();
     }
   };
 
   const rotateUp = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.rotateX(THREE.MathUtils.degToRad(15));
       orbitControlsRef.current.update();
     }
   };
 
   const rotateDown = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.rotateX(THREE.MathUtils.degToRad(-15));
       orbitControlsRef.current.update();
     }
   };
 
   const zoomIn = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.position.lerp(
         orbitControlsRef.current.target,
         0.1
@@ -447,7 +478,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   };
 
   const zoomOut = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.object.position.lerp(
         orbitControlsRef.current.target,
         -0.1
@@ -457,9 +488,15 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
   };
 
   const resetCamera = () => {
-    if (orbitControlsRef.current) {
+    if (orbitControlsRef.current && mode !== "draw") {
       orbitControlsRef.current.reset();
     }
+  };
+
+  const toggleDrawMode = () => {
+    const newMode = mode === "draw" ? "translate" : "draw";
+    setMode(newMode);
+    setDrawMode(newMode === "draw");
   };
 
   return (
@@ -510,30 +547,34 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
               <button
                 className={`px-2 py-1 rounded ${mode === "translate" ? "bg-purple-600" : "bg-gray-600"} hover:bg-purple-500 transition`}
                 onClick={() => { setMode("translate"); setDrawMode(false); }}
+                disabled={mode === "draw"}
               >
                 Move (G)
               </button>
               <button
                 className={`px-2 py-1 rounded ${mode === "rotate" ? "bg-purple-600" : "bg-gray-600"} hover:bg-purple-500 transition`}
                 onClick={() => { setMode("rotate"); setDrawMode(false); }}
+                disabled={mode === "draw"}
               >
                 Rotate (R)
               </button>
               <button
                 className={`px-2 py-1 rounded ${mode === "scale" ? "bg-purple-600" : "bg-gray-600"} hover:bg-purple-500 transition`}
                 onClick={() => { setMode("scale"); setDrawMode(false); }}
+                disabled={mode === "draw"}
               >
                 Scale (S)
               </button>
               <button
                 className={`px-2 py-1 rounded ${mode === "draw" ? "bg-purple-600" : "bg-gray-600"} hover:bg-purple-500 transition`}
-                onClick={() => { setMode("draw"); setDrawMode(true); }}
+                onClick={toggleDrawMode}
               >
                 Draw (D)
               </button>
               <button
                 className={`px-2 py-1 rounded ${snap ? "bg-purple-600" : "bg-gray-600"} hover:bg-purple-500 transition`}
                 onClick={() => setSnap(!snap)}
+                disabled={mode === "draw"}
               >
                 Snap {snap ? "On" : "Off"}
               </button>
@@ -586,42 +627,49 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={rotateLeft}
+                disabled={mode === "draw"}
               >
                 🔄 Gauche
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={rotateRight}
+                disabled={mode === "draw"}
               >
                 🔄 Droite
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={rotateDown}
+                disabled={mode === "draw"}
               >
                 🔄 Bas
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={rotateUp}
+                disabled={mode === "draw"}
               >
                 🔄 Haut
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={zoomIn}
+                disabled={mode === "draw"}
               >
                 🔎 Zoom +
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={zoomOut}
+                disabled={mode === "draw"}
               >
                 🔎 Zoom -
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={resetCamera}
+                disabled={mode === "draw"}
               >
                 🔄 Réinitialiser
               </button>
@@ -630,14 +678,14 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={undo}
-                disabled={history.length <= 1}
+                disabled={history.length <= 1 || mode === "draw"}
               >
                 Undo
               </button>
               <button
                 className="px-2 py-1 bg-gray-600 rounded hover:bg-purple-500 transition"
                 onClick={redo}
-                disabled={redoStack.length === 0}
+                disabled={redoStack.length === 0 || mode === "draw"}
               >
                 Redo
               </button>
@@ -652,6 +700,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.position.x.toFixed(2)}
                     onChange={(e) => handleInputChange("position", "x", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -659,6 +708,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.position.y.toFixed(2)}
                     onChange={(e) => handleInputChange("position", "y", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -666,6 +716,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.position.z.toFixed(2)}
                     onChange={(e) => handleInputChange("position", "z", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                 </div>
                 <div>
@@ -676,6 +727,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={THREE.MathUtils.radToDeg(object.rotation.x).toFixed(2)}
                     onChange={(e) => handleInputChange("rotation", "x", e.target.value)}
                     step="5"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -683,6 +735,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={THREE.MathUtils.radToDeg(object.rotation.y).toFixed(2)}
                     onChange={(e) => handleInputChange("rotation", "y", e.target.value)}
                     step="5"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -690,6 +743,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={THREE.MathUtils.radToDeg(object.rotation.z).toFixed(2)}
                     onChange={(e) => handleInputChange("rotation", "z", e.target.value)}
                     step="5"
+                    disabled={mode === "draw"}
                   />
                 </div>
                 <div>
@@ -700,6 +754,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.scale.x.toFixed(2)}
                     onChange={(e) => handleInputChange("scale", "x", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -707,6 +762,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.scale.y.toFixed(2)}
                     onChange={(e) => handleInputChange("scale", "y", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                   <input
                     type="number"
@@ -714,6 +770,7 @@ function TransformControlsComponent({ object, isFullscreen, orbitControlsRef, se
                     value={object.scale.z.toFixed(2)}
                     onChange={(e) => handleInputChange("scale", "z", e.target.value)}
                     step="0.1"
+                    disabled={mode === "draw"}
                   />
                 </div>
               </div>
@@ -763,8 +820,6 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
   const [drawType, setDrawType] = useState("free");
   const [lineColor, setLineColor] = useState("#ff0000");
   const [lineWidth, setLineWidth] = useState(2);
-  const [drawnLines, setDrawnLines] = useState([]);
-  const [isDrawingPanelVisible, setIsDrawingPanelVisible] = useState(true);
 
   useEffect(() => {
     function fullscreenChange() {
@@ -795,8 +850,8 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
     }
   };
 
-  const handleDraw = (line) => {
-    setDrawnLines((prev) => [...prev, line]);
+  const handleDraw = () => {
+    // Fonction conservée pour compatibilité, mais les logs sont supprimés
   };
 
   return (
@@ -855,13 +910,6 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
               onChange={(e) => setLocalInteriorColor(e.target.value)}
             />
           </label>
-          <button
-            className="control-button"
-            onClick={() => setIsDrawingPanelVisible(!isDrawingPanelVisible)}
-          >
-            {isDrawingPanelVisible ? "Masquer les tracés" : "Afficher les tracés"}
-          </button>
-          {isDrawingPanelVisible && <DrawingTools lines={drawnLines} />}
         </div>
       )}
 
@@ -880,8 +928,8 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
         <Environment preset="city" />
         <OrbitControls
           ref={orbitControlsRef}
-          enableZoom
-          enablePan
+          enableZoom={!drawMode}
+          enablePan={!drawMode}
           enableRotate={!drawMode}
           enableDamping
         />
@@ -926,13 +974,6 @@ function ModelCard({ file, material, textureURL, onClickPin, color, interiorColo
               onChange={(e) => setBgColor(e.target.value)}
             />
           </label>
-          <button
-            className="control-button"
-            onClick={() => setIsDrawingPanelVisible(!isDrawingPanelVisible)}
-          >
-            {isDrawingPanelVisible ? "Masquer les tracés" : "Afficher les tracés"}
-          </button>
-          {isDrawingPanelVisible && <DrawingTools lines={drawnLines} />}
         </div>
       )}
     </div>
